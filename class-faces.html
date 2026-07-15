@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="orgunitid" content="{OrgUnitId}">
+<title>Class Faces</title>
+<style>
+  :root {
+    --brand: #006fbf;
+    --brand-dark: #004489;
+    --ink: #202122;
+    --muted: #6e7477;
+    --line: #d3d9de;
+    --bg: #f9fbfc;
+    --photo: 120px;   /* set by JS */
+    --name-fs: 14px;  /* set by JS */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: "Lato", "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 12px; background: #fff; border-bottom: 1px solid var(--line);
+  }
+  .toolbar .title { font-weight: 700; font-size: 15px; margin-right: 2px; white-space: nowrap; }
+  .toolbar .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .toolbar input[type="search"] {
+    flex: 1 1 160px; min-width: 120px; max-width: 260px;
+    padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 13px;
+  }
+  .toolbar select {
+    padding: 6px 6px; border: 1px solid var(--line); border-radius: 6px;
+    font: inherit; font-size: 13px; background: #fff;
+  }
+  .toolbar label.ctl { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .btn {
+    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--brand);
+    background: var(--brand); color: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .btn:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+  .btn.ghost { background: #fff; color: var(--brand); }
+  .btn.ghost:hover { background: #eef6fc; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ---------- Status / settings ---------- */
+  .banner { padding: 10px 14px; font-size: 13px; display: none; }
+  .banner.err { display: block; background: #fdecea; color: #8c1d18; border-bottom: 1px solid #f3c2bd; }
+  .banner.info { display: block; background: #eef6fc; color: #054a75; border-bottom: 1px solid #cfe6f5; }
+
+  .settings {
+    display: none; padding: 10px 14px; background: #fff; border-bottom: 1px solid var(--line);
+    font-size: 13px; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .settings.open { display: flex; }
+  .settings input { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 13px; width: 110px; }
+  .settings .hint { color: var(--muted); font-size: 12px; }
+
+  /* ---------- Grid ---------- */
+  .stage { flex: 1 1 auto; position: relative; overflow: auto; padding: 10px; }
+  .grid { display: grid; gap: 8px; justify-content: center; align-content: center; min-height: 100%; }
+  .tile {
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 6px 4px; border-radius: 10px; background: #fff; border: 1px solid var(--line);
+    position: relative;
+  }
+  .tile.offpage { display: none; }
+  .tile:hover { z-index: 5; }   /* enlarged photo overlaps neighbouring tiles */
+  .photo {
+    width: var(--photo); height: var(--photo); border-radius: 8px; object-fit: cover;
+    background: #e6ebef; flex: 0 0 auto;
+  }
+  .avatar {
+    width: var(--photo); height: var(--photo); border-radius: 8px; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: calc(var(--photo) * 0.34); user-select: none;
+  }
+  .photo, .avatar { transition: transform .16s ease, box-shadow .16s ease; }
+  .photo:hover, .avatar:hover, .photo.zoom, .avatar.zoom {
+    transform: scale(1.5);      /* keep in sync with ZOOM in the script */
+    box-shadow: 0 6px 18px rgba(0,0,0,.3);
+  }
+  .nm { font-weight: 700; font-size: var(--name-fs); line-height: 1.15; margin-top: 5px; word-break: break-word; }
+  .nm a { color: var(--brand); text-decoration: none; }
+  .nm a:hover, .nm a:focus { color: var(--brand-dark); text-decoration: underline; }
+
+  /* hover card shown under a zoomed photo: name, email, role, pronouns.
+     Width and font size are set by the script to match the zoomed photo. */
+  #tip {
+    position: fixed; z-index: 50; display: none;
+    background: #202122; color: #fff; padding: .5em .7em; border-radius: 8px;
+    font-size: 12px; line-height: 1.45; word-break: break-word;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  }
+  #tip .tip-name { font-weight: 700; font-size: 1.1em; }
+  #tip a { color: #8fd0ff; text-decoration: none; }
+  #tip a:hover, #tip a:focus { text-decoration: underline; }
+  #tip .tip-name a { color: #fff; }
+
+  .empty { color: var(--muted); text-align: center; padding: 40px 10px; font-size: 14px; }
+
+  /* ---------- Pager ---------- */
+  .pager {
+    display: none; align-items: center; justify-content: center; gap: 14px;
+    padding: 7px; background: #fff; border-top: 1px solid var(--line); font-size: 13px;
+  }
+  .pager.show { display: flex; }
+
+  .spinner { margin: 60px auto; width: 34px; height: 34px; border-radius: 50%;
+    border: 4px solid #cfe6f5; border-top-color: var(--brand); animation: spin 1s linear infinite; }
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+
+  /* ---------- Print ---------- */
+  .print-head { display: none; }
+  @media print {
+    @page { size: landscape; margin: 10mm; }
+    body { background: #fff; }
+    .toolbar, .pager, .settings, .banner, #tip { display: none !important; }
+    .print-head { display: block; font-size: 14pt; font-weight: 700; margin: 0 0 6mm 0; }
+    .print-head .sub { font-size: 9pt; font-weight: 400; color: #555; }
+    .stage { overflow: visible; padding: 0; }
+    .grid { grid-template-columns: repeat(6, 1fr) !important; gap: 4mm; align-content: start; }
+    .tile { break-inside: avoid; border-color: #bbb; }
+    .tile.offpage { display: flex !important; }   /* print everyone, not just the current page */
+    .photo, .avatar { width: 100% !important; height: auto !important; aspect-ratio: 1/1; }
+    .avatar { font-size: 22pt; }
+    .nm { font-size: 9pt !important; }
+    .nm a { color: #000 !important; text-decoration: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span class="title">Class Faces</span>
+  <span class="count" id="count"></span>
+  <input type="search" id="search" placeholder="Find a student..." aria-label="Search students">
+  <label class="ctl">Sort
+    <select id="sort">
+      <option value="first">First name</option>
+      <option value="last">Last name</option>
+    </select>
+  </label>
+  <label class="ctl">On screen
+    <select id="pageSize">
+      <option value="10">10</option>
+      <option value="20" selected>20</option>
+      <option value="30">30</option>
+      <option value="40">40</option>
+      <option value="60">60</option>
+      <option value="all">All</option>
+    </select>
+  </label>
+  <label class="ctl" id="roleCtl" style="display:none;">Role
+    <select id="roleSel"><option value="">All roles</option></select>
+  </label>
+  <label class="ctl" id="groupCtl" style="display:none;">Group
+    <select id="groupCat"><option value="">All categories</option></select>
+    <select id="groupSel" style="display:none;"><option value="">All groups</option></select>
+  </label>
+  <button class="btn" id="newTabBtn" style="display:none;"
+    title="Open Class Faces in its own browser tab for the best experience">Open in new tab &#8599;</button>
+  <button class="btn ghost" id="printBtn" title="Print the full (filtered) class as a face sheet">Print</button>
+  <button class="btn ghost" id="gearBtn" title="Connection settings">&#9881;</button>
+</div>
+
+<div class="settings" id="settings">
+  <label>OrgUnit ID <input id="ouInput" inputmode="numeric" placeholder="Detecting..."></label>
+  <button class="btn" id="reloadBtn">Reload</button>
+  <span class="hint">Auto-detected from the page. Edit to target another course. This page must be
+    served from your Brightspace site (content page or widget) so it can use your login session.</span>
+</div>
+
+<div class="banner" id="banner"></div>
+
+<div class="stage" id="stage">
+  <div class="print-head" id="printHead"></div>
+  <div class="spinner" id="spinner"></div>
+  <div class="grid" id="grid" style="display:none;"></div>
+  <div class="empty" id="empty" style="display:none;">No students match.</div>
+</div>
+
+<div class="pager" id="pager">
+  <button class="btn ghost" id="prevBtn">&#8592; Prev</button>
+  <span id="pageInfo"></span>
+  <button class="btn ghost" id="nextBtn">Next &#8594;</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var FALLBACK_LP = '1.31';
+  var FALLBACK_LE = '1.53';
+  var AVATAR_COLORS = ['#00539f','#9d1c60','#d3630b','#1e7d32','#5a3ab5','#00758f','#b3261e','#5f6b1c'];
+
+  var lpVer = FALLBACK_LP, leVer = FALLBACK_LE;
+  var people = [];          // normalized classlist
+  var filtered = [];
+  var page = 0;
+  var courseName = '';
+  var groups = [];          // groups in the selected category
+  var groupMembers = null;  // Set of user ids in the selected group, or null = no group filter
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- Org unit detection (same approach as the other widgets) ---------- */
+  function tokenOrEmpty(v) { return (v && v.indexOf('{') === -1) ? v : ''; }
+  function param(n) { return new URLSearchParams(window.location.search).get(n); }
+  function detectOu() {
+    var meta = (document.querySelector('meta[name=orgunitid]') || {}).content || '';
+    var tok = tokenOrEmpty(meta); if (tok) return tok.replace(/[^0-9]/g, '');
+    var p = param('OrgUnitId') || param('ou'); if (p) return p.replace(/[^0-9]/g, '');
+    try {
+      if (window.D2L && D2L.LP && D2L.LP.Web && D2L.LP.Web.Host && D2L.LP.Web.Host.GetCurrentOrgUnit) {
+        var o = D2L.LP.Web.Host.GetCurrentOrgUnit(); if (o) return String(o);
+      }
+    } catch (e) {}
+    var url = window.location.href, m;
+    m = url.match(/\/content\/enforced\/(\d+)/i); if (m) return m[1];
+    m = url.match(/\/d2l\/home\/(\d+)/);          if (m) return m[1];
+    m = url.match(/[?&]ou=(\d+)/);                if (m) return m[1];
+    m = url.match(/\/d2l\/[a-z/]+\/(\d+)\//i);    if (m) return m[1];
+    return '';
+  }
+  var OU = detectOu();
+
+  /* ---------- API helpers ---------- */
+  function api(path) {
+    return fetch(path, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+  }
+
+  async function detectVersions() {
+    try {
+      var res = await api('/d2l/api/versions/');
+      if (!res.ok) return;
+      var list = await res.json();
+      list.forEach(function (p) {
+        if (p.ProductCode === 'lp' && p.LatestVersion) lpVer = p.LatestVersion;
+        if (p.ProductCode === 'le' && p.LatestVersion) leVer = p.LatestVersion;
+      });
+    } catch (e) {}
+  }
+
+  async function loadCourseName() {
+    try {
+      var res = await api('/d2l/api/lp/' + lpVer + '/courses/' + OU);
+      if (res.ok) { var d = await res.json(); courseName = (d && d.Name) || ''; }
+    } catch (e) {}
+  }
+
+  async function loadClasslist() {
+    var res = await api('/d2l/api/le/' + leVer + '/' + OU + '/classlist/');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var raw = await res.json();
+    return raw.map(function (u) {
+      var first = u.FirstName || '', last = u.LastName || '';
+      return {
+        id: u.Identifier,
+        profileId: u.ProfileIdentifier || '',
+        first: first,
+        last: last,
+        display: (first + ' ' + last).trim() || u.DisplayName || u.Username || u.Identifier,
+        email: u.Email || '',
+        pronouns: u.Pronouns || '',
+        role: u.ClasslistRoleDisplayName || ''
+      };
+    });
+  }
+
+  /* ---------- Groups ---------- */
+  async function loadGroupCategories() {
+    try {
+      var res = await api('/d2l/api/lp/' + lpVer + '/' + OU + '/groupcategories/');
+      if (!res.ok) return;
+      var cats = await res.json();
+      if (!cats.length) return;
+      var sel = $('groupCat');
+      cats.forEach(function (c) {
+        var o = document.createElement('option');
+        o.value = c.GroupCategoryId;
+        o.textContent = c.Name;
+        sel.appendChild(o);
+      });
+      $('groupCtl').style.display = '';
+    } catch (e) {}
+  }
+
+  async function loadGroups(catId) {
+    try {
+      var res = await api('/d2l/api/lp/' + lpVer + '/' + OU + '/groupcategories/' + catId + '/groups/');
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) { return []; }
+  }
+
+  function resetGroupFilter() {
+    groups = [];
+    groupMembers = null;
+    $('groupCtl').style.display = 'none';
+    $('groupCat').innerHTML = '<option value="">All categories</option>';
+    $('groupSel').innerHTML = '<option value="">All groups</option>';
+    $('groupSel').style.display = 'none';
+  }
+
+  /* ---------- Roles (ClasslistRoleDisplayName comes back with the classlist) ---------- */
+  function populateRoleFilter() {
+    var names = [];
+    people.forEach(function (p) {
+      if (p.role && names.indexOf(p.role) === -1) names.push(p.role);
+    });
+    if (!names.length) return;
+    names.sort();
+    var sel = $('roleSel');
+    names.forEach(function (n) {
+      var o = document.createElement('option');
+      o.value = n;
+      o.textContent = n;
+      sel.appendChild(o);
+    });
+    $('roleCtl').style.display = '';
+  }
+
+  function resetRoleFilter() {
+    $('roleCtl').style.display = 'none';
+    $('roleSel').innerHTML = '<option value="">All roles</option>';
+  }
+
+  /* ---------- Hover card (photo tooltip) ----------
+     Interactive: the pointer can move from the photo down into the card, where the
+     name links to Class Progress and the email opens the mail client. A short grace
+     timer keeps the card open while the pointer crosses the gap, and the .zoom class
+     keeps the photo enlarged while the card itself is hovered.                       */
+  var ZOOM = 1.5;   /* keep in sync with the .photo:hover scale in the CSS */
+  var tip = null, tipSrc = null, hideTimer = null;
+
+  function cancelHide() { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } }
+  function hideTip() {
+    cancelHide();
+    if (tip) tip.style.display = 'none';
+    if (tipSrc) { tipSrc.classList.remove('zoom'); tipSrc = null; }
+  }
+  function scheduleHide() { cancelHide(); hideTimer = setTimeout(hideTip, 250); }
+
+  function showTip(el, p) {
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'tip';
+      tip.addEventListener('mouseenter', function () {
+        cancelHide();
+        if (tipSrc) tipSrc.classList.add('zoom');
+      });
+      tip.addEventListener('mouseleave', scheduleHide);
+      document.body.appendChild(tip);
+    }
+    cancelHide();
+    if (tipSrc && tipSrc !== el) tipSrc.classList.remove('zoom');
+    tipSrc = el;
+
+    tip.innerHTML = '';
+    var nm = document.createElement('div');
+    nm.className = 'tip-name';
+    var nmLink = document.createElement('a');
+    nmLink.href = '/d2l/le/classprogress/userprogress/' + encodeURIComponent(p.id) + '/' + OU + '/Summary';
+    nmLink.target = '_blank';
+    nmLink.rel = 'noopener';
+    nmLink.title = 'Open class progress for ' + p.display;
+    nmLink.textContent = p.display;
+    nm.appendChild(nmLink);
+    tip.appendChild(nm);
+    if (p.email) {
+      var em = document.createElement('div');
+      var emLink = document.createElement('a');
+      emLink.href = 'mailto:' + p.email;
+      emLink.textContent = p.email;
+      em.appendChild(emLink);
+      tip.appendChild(em);
+    }
+    [p.role, p.pronouns].forEach(function (v) {
+      if (!v) return;
+      var d = document.createElement('div');
+      d.textContent = v;
+      tip.appendChild(d);
+    });
+
+    /* match the zoomed photo: same width, text scaled to it */
+    var r = el.getBoundingClientRect();
+    var w = Math.round(r.width * ZOOM);
+    tip.style.width = w + 'px';
+    tip.style.fontSize = Math.max(10, Math.round(w * 0.075)) + 'px';
+    tip.style.display = 'block';
+
+    /* position below where the photo's edge will be once it has zoomed */
+    var grow = r.height * (ZOOM - 1) / 2;
+    var x = r.left + r.width / 2 - w / 2;
+    x = Math.max(6, Math.min(x, window.innerWidth - w - 6));
+    var y = r.bottom + grow + 8;
+    if (y + tip.offsetHeight > window.innerHeight - 6) y = r.top - grow - tip.offsetHeight - 8;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+
+  function attachHover(el, p) {
+    el.addEventListener('mouseenter', function () { showTip(el, p); });
+    el.addEventListener('mouseleave', scheduleHide);
+  }
+
+  /* ---------- Rendering ---------- */
+  function initials(p) {
+    var a = (p.first || p.display || '?').charAt(0);
+    var b = (p.last || '').charAt(0);
+    return (a + b).toUpperCase();
+  }
+  function avatarColor(p) {
+    var s = p.display, h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  }
+
+  function buildTiles() {
+    var grid = $('grid');
+    grid.innerHTML = '';
+    var byLast = $('sort').value === 'last';
+
+    filtered.forEach(function (p) {
+      var tile = document.createElement('div');
+      tile.className = 'tile';
+
+      if (p.profileId) {
+        var img = document.createElement('img');
+        img.className = 'photo';
+        img.loading = 'lazy';
+        img.alt = '';
+        img.src = '/d2l/api/lp/' + lpVer + '/profile/' + encodeURIComponent(p.profileId) + '/image?size=192';
+        img.onerror = function () {
+          var av = makeAvatar(p);
+          attachHover(av, p);
+          img.replaceWith(av);
+        };
+        attachHover(img, p);
+        tile.appendChild(img);
+      } else {
+        var av0 = makeAvatar(p);
+        attachHover(av0, p);
+        tile.appendChild(av0);
+      }
+
+      var nm = document.createElement('div');
+      nm.className = 'nm';
+      var link = document.createElement('a');
+      link.href = '/d2l/le/classprogress/userprogress/' + encodeURIComponent(p.id) + '/' + OU + '/Summary';
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.title = 'Open class progress for ' + p.display + (p.role ? ' — ' + p.role : '');
+      /* show the sorted part of the name first: "Aoife Murphy" on first-name sort,
+         "Murphy, Aoife" on last-name sort — regardless of how Brightspace formats DisplayName */
+      link.textContent = (p.first && p.last)
+        ? (byLast ? p.last + ', ' + p.first : p.first + ' ' + p.last)
+        : p.display;
+      nm.appendChild(link);
+      tile.appendChild(nm);
+      grid.appendChild(tile);
+    });
+  }
+
+  function makeAvatar(p) {
+    var av = document.createElement('div');
+    av.className = 'avatar';
+    av.style.background = avatarColor(p);
+    av.textContent = initials(p);
+    return av;
+  }
+
+  function applyFilterSort() {
+    var q = $('search').value.trim().toLowerCase();
+    var role = $('roleSel').value;
+    filtered = people.filter(function (p) {
+      if (role && p.role !== role) return false;
+      if (groupMembers && !groupMembers.has(String(p.id))) return false;
+      if (!q) return true;
+      return (p.display + ' ' + p.email).toLowerCase().indexOf(q) !== -1;
+    });
+    var mode = $('sort').value;
+    filtered.sort(function (a, b) {
+      if (mode === 'last') return (a.last + a.first).localeCompare(b.last + b.first);
+      return (a.first + a.last).localeCompare(b.first + b.last);
+    });
+  }
+
+  function pageSize() {
+    var v = $('pageSize').value;
+    return v === 'all' ? filtered.length || 1 : parseInt(v, 10);
+  }
+
+  function layout() {
+    var grid = $('grid'), stage = $('stage');
+    var n = Math.min(pageSize(), filtered.length) || 1;
+
+    var aspect = 1.35;   /* tile height = width * aspect */
+
+    var W = stage.clientWidth - 20, H = stage.clientHeight - 20;
+    var best = { size: 0, cols: 1 };
+    for (var c = 1; c <= n; c++) {
+      var r = Math.ceil(n / c);
+      var size = Math.min(W / c - 8, (H / r - 8) / aspect);
+      if (size > best.size) best = { size: size, cols: c };
+    }
+    var photo = Math.max(56, Math.floor(best.size * 0.82));
+    document.documentElement.style.setProperty('--photo', photo + 'px');
+    document.documentElement.style.setProperty('--name-fs', Math.max(10, Math.round(photo * 0.14)) + 'px');
+    grid.style.gridTemplateColumns = 'repeat(' + best.cols + ', minmax(0, max-content))';
+  }
+
+  function showPage() {
+    var size = pageSize();
+    var pages = Math.max(1, Math.ceil(filtered.length / size));
+    if (page >= pages) page = pages - 1;
+    if (page < 0) page = 0;
+
+    var tiles = $('grid').children;
+    for (var i = 0; i < tiles.length; i++) {
+      var visible = i >= page * size && i < (page + 1) * size;
+      tiles[i].classList.toggle('offpage', !visible);
+    }
+
+    $('empty').style.display = filtered.length ? 'none' : 'block';
+    $('grid').style.display = filtered.length ? 'grid' : 'none';
+    $('count').textContent = filtered.length + (filtered.length === 1 ? ' person' : ' people') +
+      (filtered.length !== people.length ? ' (of ' + people.length + ')' : '');
+
+    var pager = $('pager');
+    pager.classList.toggle('show', pages > 1);
+    $('pageInfo').textContent = 'Page ' + (page + 1) + ' of ' + pages;
+    $('prevBtn').disabled = page === 0;
+    $('nextBtn').disabled = page >= pages - 1;
+
+    layout();
+  }
+
+  function rerender() { hideTip(); buildTiles(); showPage(); }
+
+  /* ---------- Events ---------- */
+  $('search').addEventListener('input', function () { page = 0; applyFilterSort(); rerender(); });
+  $('sort').addEventListener('change', function () { applyFilterSort(); rerender(); });
+  $('pageSize').addEventListener('change', function () { page = 0; showPage(); });
+  $('roleSel').addEventListener('change', function () { page = 0; applyFilterSort(); rerender(); });
+  $('groupCat').addEventListener('change', async function () {
+    var catId = this.value;
+    var sel = $('groupSel');
+    sel.innerHTML = '<option value="">All groups</option>';
+    groups = [];
+    groupMembers = null;
+    if (!catId) {
+      sel.style.display = 'none';
+    } else {
+      groups = await loadGroups(catId);
+      groups.forEach(function (g) {
+        var o = document.createElement('option');
+        o.value = g.GroupId;
+        o.textContent = g.Name;
+        sel.appendChild(o);
+      });
+      sel.style.display = '';
+    }
+    page = 0; applyFilterSort(); rerender();
+  });
+  $('groupSel').addEventListener('change', function () {
+    var gid = this.value;
+    groupMembers = null;
+    if (gid) {
+      for (var i = 0; i < groups.length; i++) {
+        if (String(groups[i].GroupId) === gid) {
+          groupMembers = new Set((groups[i].Enrollments || []).map(String));
+          break;
+        }
+      }
+    }
+    page = 0; applyFilterSort(); rerender();
+  });
+  $('newTabBtn').addEventListener('click', function () {
+    var u = new URL(window.location.href);
+    if (OU) u.searchParams.set('ou', OU);
+    window.open(u.toString(), '_blank', 'noopener');
+  });
+  $('prevBtn').addEventListener('click', function () { page--; showPage(); });
+  $('nextBtn').addEventListener('click', function () { page++; showPage(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'ArrowLeft' && !$('prevBtn').disabled) { page--; showPage(); }
+    if (e.key === 'ArrowRight' && !$('nextBtn').disabled) { page++; showPage(); }
+  });
+  window.addEventListener('resize', layout);
+  $('printBtn').addEventListener('click', function () {
+    $('printHead').innerHTML = '';
+    var h = document.createElement('span');
+    h.textContent = (courseName || 'Class') + ' — face sheet';
+    var sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = filtered.length + ' people · ' + new Date().toLocaleDateString();
+    $('printHead').appendChild(h);
+    $('printHead').appendChild(sub);
+    window.print();
+  });
+  $('gearBtn').addEventListener('click', function () { $('settings').classList.toggle('open'); });
+  $('reloadBtn').addEventListener('click', function () {
+    var v = $('ouInput').value.replace(/[^0-9]/g, '');
+    if (v) { OU = v; init(); }
+  });
+
+  /* Show the "Open in new tab" button only when embedded (widget/iframe) */
+  try {
+    if (window.self !== window.top) $('newTabBtn').style.display = '';
+  } catch (e) { $('newTabBtn').style.display = ''; }
+
+  function banner(kind, text) {
+    var b = $('banner');
+    b.className = 'banner' + (kind ? ' ' + kind : '');
+    b.textContent = text || '';
+  }
+
+  /* ---------- Boot ---------- */
+  async function init() {
+    banner('', '');
+    $('spinner').style.display = 'block';
+    $('grid').style.display = 'none';
+    $('empty').style.display = 'none';
+    $('ouInput').value = OU;
+    resetGroupFilter();
+    resetRoleFilter();
+
+    if (!OU) {
+      $('spinner').style.display = 'none';
+      banner('err', 'Could not detect the course. Open the settings (gear icon) and enter the OrgUnit ID.');
+      $('settings').classList.add('open');
+      return;
+    }
+
+    try {
+      await detectVersions();
+      loadCourseName();
+      loadGroupCategories();
+      people = await loadClasslist();
+      $('spinner').style.display = 'none';
+      if (!people.length) { banner('info', 'The classlist for this course is empty.'); return; }
+      populateRoleFilter();
+      applyFilterSort();
+      rerender();
+    } catch (e) {
+      $('spinner').style.display = 'none';
+      banner('err', 'Could not load the classlist (' + e.message + '). Make sure this page is served ' +
+        'from your Brightspace site, you are logged in, and you have permission to view the classlist ' +
+        'in this course.');
+      $('settings').classList.add('open');
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
